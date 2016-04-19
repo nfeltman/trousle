@@ -1,0 +1,8 @@
+[package]
+
+name = "trousle"
+version = "0.0.1"
+authors = [ "Nicolas Feltman <nfeltman@gmail.com>" ]
+
+
+[dependencies]
