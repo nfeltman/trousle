@@ -289,19 +289,28 @@ mod Simple6502 {
 		CommonOp (super::CommonOps),
 		Unary (UnOp, UnArg),
 		Binary (BinOp, Register, BinArg),
-		Store (Register, StoreLoc),
+		Store (Register, MemLoc),
 		Branch (SetOrClear, Flags),
 		SetFlag (SetOrClear, Flags),
 	}
 
-	pub enum Flags {
-		Negative,
-		Zero,
-		Carry,
-		Overflow,
-		Interupt,
-		Decimal,
+	// registers
+	pub enum Register {
+		X, Y, A, Stack
 	}
+
+	// locations in memory
+	pub enum MemLoc {
+		ZeroPage,
+		ZeroPageX,
+		ZeroPageY,
+		Absolute,
+		AbsoluteX,
+		AbsoluteY,
+		IndirectX,
+		IndirectY
+	}
+
 
 	// binary operations 
 	pub enum BinOp {
@@ -318,31 +327,8 @@ mod Simple6502 {
 	// address modes for binary operations
 	pub enum BinArg {
 		Immediate,
-		ZeroPage,
-		ZeroPageX,
-		ZeroPageY,
-		Absolute,
-		AbsoluteX,
-		AbsoluteY,
-		IndirectX,
-		IndirectY,
+		Mem(MemLoc),
 		Reg(Register)
-	}
-
-	// store locations
-	pub enum StoreLoc {
-		ZeroPage,
-		ZeroPageX,
-		ZeroPageY,
-		Absolute,
-		AbsoluteX,
-		AbsoluteY,
-		IndirectX,
-		IndirectY
-	}
-
-	pub enum Register {
-		X, Y, A, Stack
 	}
 
 	// various unary operations
@@ -357,26 +343,34 @@ mod Simple6502 {
 
 	// address modes for the unary operations
 	pub enum UnArg {
-		ZeroPage,
-		ZeroPageX,
-		Absolute,
-		AbsoluteX,
+		Mem(MemLoc),
 		Reg(Register)
+	}	
+
+	pub enum Flags {
+		Negative,
+		Zero,
+		Carry,
+		Overflow,
+		Interupt,
+		Decimal,
 	}
+}
 
-
-	pub fn simplify(i : Full6502::Instruction) -> Instruction
+impl Full6502::Instruction {
+	pub fn simplify(self : Full6502::Instruction) -> Simple6502::Instruction
 	{
-		use self::Instruction::*;
-		use super::Full6502 as Full;
-		use super::Full6502::Instruction as FullI;
-		match i {
+		use self::Simple6502::*;
+		use self::Simple6502::Instruction::*;
+		use self::Full6502 as Full;
+		use self::Full6502::Instruction as FullI;
+		match self {
 			FullI::Invalid => Invalid,
 			FullI::CommonOp (op) => CommonOp(op),
 			FullI::TestBits (am) => Binary(BinOp::TestBits, Register::A,
 				match am {
-					Full::TestBitsAM::ZeroPage => BinArg::ZeroPage, 
-					Full::TestBitsAM::Absolute => BinArg::Absolute}),
+					Full::TestBitsAM::ZeroPage => BinArg::Mem(MemLoc::ZeroPage), 
+					Full::TestBitsAM::Absolute => BinArg::Mem(MemLoc::Absolute)}),
 			FullI::IncDecInst (op, am) => Unary(
 				match op {
 					Full::IncDecOp::Increment => UnOp::Increment,
@@ -385,21 +379,21 @@ mod Simple6502 {
 				match am {
 					Full::IncDecAM::X => UnArg::Reg(Register::X),
 					Full::IncDecAM::Y => UnArg::Reg(Register::Y),
-					Full::IncDecAM::ZeroPage => UnArg::ZeroPage,
-					Full::IncDecAM::ZeroPageX => UnArg::ZeroPageX,
-					Full::IncDecAM::Absolute => UnArg::Absolute,
-					Full::IncDecAM::AbsoluteX => UnArg::AbsoluteX
+					Full::IncDecAM::ZeroPage 	=> UnArg::Mem(MemLoc::ZeroPage),
+					Full::IncDecAM::ZeroPageX 	=> UnArg::Mem(MemLoc::ZeroPageX),
+					Full::IncDecAM::Absolute 	=> UnArg::Mem(MemLoc::Absolute),
+					Full::IncDecAM::AbsoluteX 	=> UnArg::Mem(MemLoc::AbsoluteX)
 				}),
 			FullI::AccInst (op, am) => {
 				let arg = match am {
 					Full::AccAM::Immediate	=> BinArg::Immediate,
-					Full::AccAM::ZeroPage	=> BinArg::ZeroPage,
-					Full::AccAM::ZeroPageX	=> BinArg::ZeroPageX,
-					Full::AccAM::Absolute	=> BinArg::Absolute,
-					Full::AccAM::AbsoluteX	=> BinArg::AbsoluteX,
-					Full::AccAM::AbsoluteY	=> BinArg::AbsoluteY,
-					Full::AccAM::IndirectX	=> BinArg::IndirectX,
-					Full::AccAM::IndirectY	=> BinArg::IndirectY,
+					Full::AccAM::ZeroPage	=> BinArg::Mem(MemLoc::ZeroPage),
+					Full::AccAM::ZeroPageX	=> BinArg::Mem(MemLoc::ZeroPageX),
+					Full::AccAM::Absolute	=> BinArg::Mem(MemLoc::Absolute),
+					Full::AccAM::AbsoluteX	=> BinArg::Mem(MemLoc::AbsoluteX),
+					Full::AccAM::AbsoluteY	=> BinArg::Mem(MemLoc::AbsoluteY),
+					Full::AccAM::IndirectX	=> BinArg::Mem(MemLoc::IndirectX),
+					Full::AccAM::IndirectY	=> BinArg::Mem(MemLoc::IndirectY),
 				};
 				match op {
 					Full::AccOp::Or 	=> Binary(BinOp::Or, Register::A, arg),
@@ -409,13 +403,13 @@ mod Simple6502 {
 					Full::AccOp::Store	=> Store(Register::A, 
 						match am {
 							Full::AccAM::Immediate	=> panic!("Store into immediate isn't a real instruction."),
-							Full::AccAM::ZeroPage	=> StoreLoc::ZeroPage,
-							Full::AccAM::ZeroPageX	=> StoreLoc::ZeroPageX,
-							Full::AccAM::Absolute	=> StoreLoc::Absolute,
-							Full::AccAM::AbsoluteX	=> StoreLoc::AbsoluteX,
-							Full::AccAM::AbsoluteY	=> StoreLoc::AbsoluteY,
-							Full::AccAM::IndirectX	=> StoreLoc::IndirectX,
-							Full::AccAM::IndirectY	=> StoreLoc::IndirectY,
+							Full::AccAM::ZeroPage	=> MemLoc::ZeroPage,
+							Full::AccAM::ZeroPageX	=> MemLoc::ZeroPageX,
+							Full::AccAM::Absolute	=> MemLoc::Absolute,
+							Full::AccAM::AbsoluteX	=> MemLoc::AbsoluteX,
+							Full::AccAM::AbsoluteY	=> MemLoc::AbsoluteY,
+							Full::AccAM::IndirectX	=> MemLoc::IndirectX,
+							Full::AccAM::IndirectY	=> MemLoc::IndirectY,
 						}),
 					Full::AccOp::Load 	=> Binary(BinOp::Set, Register::A, arg),
 					Full::AccOp::Comp 	=> Binary(BinOp::Comp, Register::A, arg),
@@ -430,10 +424,10 @@ mod Simple6502 {
 				},
 				match am {
 					Full::ShiftAM::Acc			=> UnArg::Reg(Register::A),
-					Full::ShiftAM::ZeroPage		=> UnArg::ZeroPage,
-					Full::ShiftAM::ZeroPageX	=> UnArg::ZeroPageX,
-					Full::ShiftAM::Absolute		=> UnArg::Absolute,
-					Full::ShiftAM::AbsoluteX	=> UnArg::AbsoluteX,
+					Full::ShiftAM::ZeroPage		=> UnArg::Mem(MemLoc::ZeroPage),
+					Full::ShiftAM::ZeroPageX	=> UnArg::Mem(MemLoc::ZeroPageX),
+					Full::ShiftAM::Absolute		=> UnArg::Mem(MemLoc::Absolute),
+					Full::ShiftAM::AbsoluteX	=> UnArg::Mem(MemLoc::AbsoluteX),
 				}),
 			FullI::CompareXY (reg, am) => Binary( BinOp::Comp,
 				match reg {
@@ -442,8 +436,8 @@ mod Simple6502 {
 				},
 				match am {
 					Full::CompAM::Immediate	=> BinArg::Immediate,
-					Full::CompAM::ZeroPage	=> BinArg::ZeroPage,
-					Full::CompAM::Absolute	=> BinArg::Absolute,
+					Full::CompAM::ZeroPage	=> BinArg::Mem(MemLoc::ZeroPage),
+					Full::CompAM::Absolute	=> BinArg::Mem(MemLoc::Absolute),
 				}),
 			FullI::StoreXY (reg, am) => Store(
 				match reg {
@@ -451,13 +445,13 @@ mod Simple6502 {
 					Full::XorY::Y => Register::Y,
 				},
 				match am {
-					Full::StoreAM::ZeroPage			=> StoreLoc::ZeroPage,
+					Full::StoreAM::ZeroPage			=> MemLoc::ZeroPage,
 					Full::StoreAM::ZeroPageIndirect	=> 
 						match reg {
-							Full::XorY::X => StoreLoc::ZeroPageY,
-							Full::XorY::Y => StoreLoc::ZeroPageX,
+							Full::XorY::X => MemLoc::ZeroPageY,
+							Full::XorY::Y => MemLoc::ZeroPageX,
 						},
-					Full::StoreAM::Absolute			=> StoreLoc::Absolute,
+					Full::StoreAM::Absolute			=> MemLoc::Absolute,
 				}),
 			FullI::LoadXY (reg, am) => Binary( BinOp::Set,
 				match reg {
@@ -466,17 +460,17 @@ mod Simple6502 {
 				},
 				match am {
 					Full::LoadAM::Immediate			=> BinArg::Immediate,
-					Full::LoadAM::ZeroPage			=> BinArg::ZeroPage,
+					Full::LoadAM::ZeroPage			=> BinArg::Mem(MemLoc::ZeroPage),
 					Full::LoadAM::ZeroPageIndirect	=>
 						match reg {
-							Full::XorY::X => BinArg::ZeroPageY,
-							Full::XorY::Y => BinArg::ZeroPageX,
+							Full::XorY::X => BinArg::Mem(MemLoc::ZeroPageY),
+							Full::XorY::Y => BinArg::Mem(MemLoc::ZeroPageX),
 						},
-					Full::LoadAM::Absolute			=> BinArg::Absolute,
+					Full::LoadAM::Absolute			=> BinArg::Mem(MemLoc::Absolute),
 					Full::LoadAM::AbsoluteIndirect	=>
 						match reg {
-							Full::XorY::X => BinArg::AbsoluteY,
-							Full::XorY::Y => BinArg::AbsoluteX,
+							Full::XorY::X => BinArg::Mem(MemLoc::AbsoluteY),
+							Full::XorY::Y => BinArg::Mem(MemLoc::AbsoluteX),
 						},
 				}),
 			FullI::Branch (soc, flag) => Branch(soc,
