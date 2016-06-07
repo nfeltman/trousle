@@ -25,6 +25,8 @@ fn step<M : MemorySystem>(mut s : ProcessorState, m : M) -> Result<(),()> {
 		Flags::Negative => 0b_1000_0000,
 	}};
 
+	let set_carry = |bit : u8| -> () {s.status = s.status & 0xFE + bit};
+
 	fn firstPage(addr : u8) -> u16 {
 		addr as u16 + 0x0100_u16
 	};
@@ -97,28 +99,32 @@ fn step<M : MemorySystem>(mut s : ProcessorState, m : M) -> Result<(),()> {
 			};
 			match op {
 			    UnOp::ShiftLeft => {
-			    	s.status = s.status & 0xFE + (*spot >> 7);
+			    	set_carry (*spot >> 7);
 			    	*spot <<= 1
 			    },
 				UnOp::RotateLeft => {
 					let carrybit = s.status & 1;
-			    	s.status = s.status & 0xFE + (*spot >> 7);
+			    	set_carry (*spot >> 7);
 			    	*spot = (*spot << 7) + carrybit
 			    },
 				UnOp::ShiftRight => {
-			    	s.status = s.status & 0xFE + (*spot & 1);
+			    	set_carry (*spot & 1);
 			    	*spot >>= 1
 			    },
 				UnOp::RotateRight => {
 					let carrybit = s.status << 7;
-			    	s.status = s.status & 0xFE + (*spot & 1);
+			    	set_carry (*spot & 1);
 			    	*spot = (spot >> 1) + carrybit;
 			    },
 				UnOp::Increment => *spot += 1,
 				UnOp::Decrement => *spot -= 1,
-			}
+			};
 
-			// handle flags
+			// set zero flag
+			s.status = s.status & 0b_1111_1101 + (if *spot == 0 {2} else {0});
+
+			// set negative flag
+			s.status = s.status & 0b_0111_1111 + (*spot & 0b_1000_0000);
 
 			Ok(())
 		},
